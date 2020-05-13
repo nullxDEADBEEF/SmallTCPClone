@@ -1,5 +1,17 @@
 import socket
+import configparser
+import threading
+import time
 import sys
+import os
+
+# config parser to load our client settings
+config_parser = configparser.ConfigParser()
+
+# load in settings
+config_parser.read("opt.conf")
+keep_alive = config_parser.getboolean("DEFAULT_SETTINGS", "KeepAlive")
+print(keep_alive)
 
 # create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -10,10 +22,19 @@ QUIT_MESSAGE = b"QUIT"
 QUIT_MESSAGE_INDEX = 1
 ACCEPT_STRING_INDEX = 1
 MAX_MESSAGE_SIZE = 4096
+HEARTBEAT_TIMER = 3.0
 
 msg_counter = 0
 res_counter = 1
 ip = socket.gethostbyname(socket.gethostname())
+
+
+def send_heartbeat():
+    heartbeat_message = "con-h 0x00"
+    if keep_alive:
+        while True:
+            time.sleep(HEARTBEAT_TIMER)
+            sock.sendto(heartbeat_message.encode(), server_address)
 
 
 def do_handshake():
@@ -24,14 +45,14 @@ def do_handshake():
     server_response = server_response.decode()
     if server_response.split()[ACCEPT_STRING_INDEX] != "accept":
         print(server_response)
-        sys.exit()
+        sys.exit(0)
     else:
         print(server_response)
         client_accept = "com-{} accept".format(com_counter)
         sock.sendto(client_accept.encode(), server_address)
         if client_accept.split()[ACCEPT_STRING_INDEX] != "accept":
             print("You didnt accept the connection request")
-            sys.exit()
+            sys.exit(0)
         else:
             print(client_accept)
             com_counter += 1
@@ -39,51 +60,52 @@ def do_handshake():
 
 def send_message():
     global msg_counter
-    # encode message into bytes
-    message = input("> ")
-    message = "msg-{} = {}".format(msg_counter, message).encode()
-    # send data
-    print(message.decode())
-    sock.sendto(message, server_address)
-    msg_counter += 1
-    return message
+    while True:
+        try:
+            # encode message into bytes
+            message = input("> ")
+            message = "msg-{} = {}".format(msg_counter, message).encode()
+            # send data
+            print(message.decode())
+            sock.sendto(message, server_address)
+            if message.decode().split("= ")[QUIT_MESSAGE_INDEX] == QUIT_MESSAGE.decode():
+                sys.exit()
+            msg_counter += 1
+            # we sleep shortly to let response be printed before we get input again
+            time.sleep(0.1)
+        except KeyboardInterrupt as ex:
+            print(ex)
 
 
 def receive_response():
     global msg_counter
     global res_counter
-    data, server = sock.recvfrom(MAX_MESSAGE_SIZE)
-    if data.decode() == "con-res 0xFE":
-        print(data.decode())
-        sock.sendto( "con-res 0xFF".encode(), server)
-        return False
-    elif data.decode().split("-")[0] != "res":
-        print("Server couldnt match msg counter with yours...\nExiting...")
-        return False
-    else:
-        print(data.decode())
-        msg_counter += 1
-        res_counter += 2
-        return True
+    while True:
+        data, server = sock.recvfrom(MAX_MESSAGE_SIZE)
+        if data.decode() == "con-res 0xFE":
+            sock.sendto( "con-res 0xFF".encode(), server)
+            sock.close()
+            print("Idle for 4 seconds, shutting down...")
+            os._exit(1)
+
+        if data.decode().split("-")[0] != "res":
+            print("Server couldnt match msg counter with yours...\nExiting...")
+            sock.close()
+            sys.exit()
+        else:
+            print(data.decode())
+            msg_counter += 1
+            res_counter += 2
 
 
-def handle_messages():
-    connected = True
-    while connected:
-        try:
-            send = send_message()
-            if send.decode().split("= ")[QUIT_MESSAGE_INDEX] != QUIT_MESSAGE.decode():
-                got_response = receive_response()
-                if not got_response:
-                    break
-            else:
-                break
-        except OSError as ex:
-            print("Error: {}".format(ex))
-
-    print("closing socket")
-    sock.close()
+if __name__ == "__main__":
+    do_handshake()
+    heartbeat_thread = threading.Thread(target = send_heartbeat)
+    heartbeat_thread.setDaemon(True)
+    heartbeat_thread.start()
+    receive_thread = threading.Thread(target = receive_response)
+    receive_thread.setDaemon(True)
+    receive_thread.start()
+    send_message()
 
 
-do_handshake()
-handle_messages()

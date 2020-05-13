@@ -1,5 +1,5 @@
 import socket
-import time
+import threading
 
 # create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -37,53 +37,69 @@ def handle_handshake():
     if data_list[ACCEPT_STRING_INDEX].decode() == "accept":
         print("Client accepted connection request")
         com_counter += 1
+        return client_address
     else:
         print("Client didnt accept connection request")
         handle_handshake()
 
 
 def handle_client_message():
+    client_address = handle_handshake()
     msg_counter = 0
     res_counter = 1
     running = True
+    is_timed_out = False
     while running:
-        # start tolerance timer
-        start_time = time.time()
-        print("\nwaiting to receive message")
-        data, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
-        message_type = data.decode().split("-")[0]
-        client_counter = data.decode().split("-")[1].split(" ")[0]
-        client_counter = int(client_counter)
+        try:
+            if is_timed_out:
+                print("Sent terminating message")
+                sock.sendto(TERMINATE_CLIENT_PACKET.encode(), client_address)
+                data, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
+                if data.decode() == "con-res 0xFF":
+                    print(data.decode())
+                    print("Did not receive any packages for 4 seconds, shutting down...")
+                    break
+            # start tolerance timer
+            sock.settimeout(CONNECTION_TOLERANCE)
 
-        end_time = time.time()
-        if end_time - start_time > CONNECTION_TOLERANCE:
-            print("Sent terminating message")
-            sock.sendto(TERMINATE_CLIENT_PACKET.encode(), client_address)
+            print("\nwaiting to receive message")
             data, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
 
-        print(end_time - start_time)
-        print("received {} bytes from {}".format(len(data), client_address))
+            if data.decode()[:7] == "com-0" and not "con-h 0x00":
+                handle_handshake()
+                handle_client_message()
 
-        if data:
-            if data.decode() == "con-res 0xFF":
-                print(data.decode())
-                print("Shutting down...")
-                break
-            if data.decode().split("= ")[1] == QUIT_MESSAGE.decode():
-                break
-            elif message_type == "msg" and msg_counter == client_counter:
-                automated_message = "res-{} = {}".format(res_counter, "I am server").encode()
-                sent = sock.sendto(automated_message, client_address)
-                res_counter += 2
-                msg_counter += 2
-                print("sent {} bytes back to {}".format(sent, client_address))
-            else:
-                sock.sendto("Error in message\nExpected: msg, counter: {}\nGot: {}, counter: {}"
-                            .format(msg_counter, message_type, client_counter).encode(), client_address)
+            if data.decode() == "con-h 0x00":
+                print("con-h 0x00, Heartbeat received...")
+
+            print("received {} bytes from {}".format(len(data), client_address))
+
+            if data:
+                if data.decode() != "con-h 0x00":
+                    if data.decode().split("= ")[1] == QUIT_MESSAGE.decode():
+                        break
+
+                if data.decode().split("-")[0] == "msg":
+                    message_type = data.decode().split("-")[0]
+                    client_counter = int(data.decode().split("-")[1].split()[0])
+                    if msg_counter == client_counter:
+                        automated_message = "res-{} = {}".format(res_counter, "I am server").encode()
+                        sent = sock.sendto(automated_message, client_address)
+                        res_counter += 2
+                        msg_counter += 2
+                        print("sent {} bytes back to {}".format(sent, client_address))
+                    else:
+                        sock.sendto("Error in message\nExpected: msg, counter: {}\nGot: {}, counter: {}"
+                                    .format(msg_counter, message_type, client_counter, client_address))
+        except KeyboardInterrupt as ex:
+            print(ex)
+        except socket.timeout:
+            is_timed_out = True
+            continue
 
     print("Closing socket...")
     sock.close()
 
 
-handle_handshake()
-handle_client_message()
+if __name__ == "__main__":
+    handle_client_message()
