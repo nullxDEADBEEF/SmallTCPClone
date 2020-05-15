@@ -11,24 +11,20 @@ config_parser = configparser.ConfigParser()
 # load in settings
 config_parser.read("opt.conf")
 keep_alive = config_parser.getboolean("DEFAULT_SETTINGS", "KeepAlive")
-print(keep_alive)
 
 # create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 server_address = ("127.0.0.1", 10000)
 
-QUIT_MESSAGE = b"QUIT"
-QUIT_MESSAGE_INDEX = 1
 ACCEPT_STRING_INDEX = 1
 MAX_MESSAGE_SIZE = 4096
 HEARTBEAT_TIMER = 3.0
 
-msg_counter = 0
-res_counter = 1
 ip = socket.gethostbyname(socket.gethostname())
 
 
+# sends heartbeat to server if flag is set
 def send_heartbeat():
     heartbeat_message = "con-h 0x00"
     if keep_alive:
@@ -37,6 +33,7 @@ def send_heartbeat():
             sock.sendto(heartbeat_message.encode(), server_address)
 
 
+# initialize connection with a three-way handshake
 def do_handshake():
     com_counter = 0
     print("com-{} ".format(com_counter) + ip)
@@ -55,47 +52,43 @@ def do_handshake():
             sys.exit(0)
         else:
             print(client_accept)
-            com_counter += 1
 
 
 def send_message():
-    global msg_counter
+    msg_counter = 0
     while True:
         try:
             # encode message into bytes
             message = input("> ")
-            message = "msg-{} = {}".format(msg_counter, message).encode()
+            message = "msg-{} = {}".format(msg_counter, message)
             # send data
-            print(message.decode())
-            sock.sendto(message, server_address)
-            if message.decode().split("= ")[QUIT_MESSAGE_INDEX] == QUIT_MESSAGE.decode():
-                sys.exit()
-            msg_counter += 1
+            print(message)
+            sock.sendto(message.encode(), server_address)
+            msg_counter += 2
             # we sleep shortly to let response be printed before we get input again
             time.sleep(0.1)
-        except KeyboardInterrupt as ex:
-            print(ex)
+        except (KeyboardInterrupt, OSError):
+            sys.exit()
 
 
 def receive_response():
-    global msg_counter
-    global res_counter
     while True:
         data, server = sock.recvfrom(MAX_MESSAGE_SIZE)
+        # we received termination package, time to shutdown
         if data.decode() == "con-res 0xFE":
-            sock.sendto( "con-res 0xFF".encode(), server)
+            sock.sendto("con-res 0xFF".encode(), server)
             sock.close()
             print("Idle for 4 seconds, shutting down...")
             os._exit(1)
 
-        if data.decode().split("-")[0] != "res":
-            print("Server couldnt match msg counter with yours...\nExiting...")
-            sock.close()
-            sys.exit()
+        # check for if we didnt get the expected message type(response)
+
+        if data.decode().split("-")[0] == "res":
+            print(data.decode())
         else:
             print(data.decode())
-            msg_counter += 1
-            res_counter += 2
+            # sock.close()
+            # sys.exit()
 
 
 if __name__ == "__main__":
@@ -107,5 +100,3 @@ if __name__ == "__main__":
     receive_thread.setDaemon(True)
     receive_thread.start()
     send_message()
-
-
