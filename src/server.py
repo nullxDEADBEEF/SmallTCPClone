@@ -1,7 +1,6 @@
 import socket
 import sys
 
-# TODO: fix server so that a new client can connect and do the handshake etc
 # TODO: implement automation of package sending
 
 # create UDP socket
@@ -14,14 +13,14 @@ sock.bind(server_address)
 
 ACCEPT_STRING_INDEX = 1
 MAX_MESSAGE_SIZE = 4096
-CONNECTION_TOLERANCE = 4
+CONNECTION_TOLERANCE = 4.0
 TERMINATE_CLIENT_PACKET = "con-res 0xFE"
 
 
 # handle connection request from client
 def handle_handshake():
+    com_counter = 0
     try:
-        com_counter = 0
         client_message, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
         # get the counter after we split the message with format "com-<com_counter>"
         # first split -> [com, 0 <ip address>] => second split => [0, <ip address>]
@@ -49,14 +48,8 @@ def handle_handshake():
 def handle_client_message():
     client_address = handle_handshake()
     running = True
-    handle_client_message.is_timed_out = False
     while running:
         try:
-            if handle_client_message.is_timed_out:
-                print("Sent terminating message")
-                sock.sendto(TERMINATE_CLIENT_PACKET.encode(), client_address)
-                handle_client_message.is_timed_out = False
-                continue
             # start tolerance timer
             sock.settimeout(CONNECTION_TOLERANCE)
 
@@ -69,10 +62,6 @@ def handle_client_message():
             print("received {} bytes from {}".format(len(data), client_address))
 
             if data:
-                # check if we got a new client request
-                if data.decode()[:5] == "com-0":
-                    handle_client_message()
-
                 if data.decode() == "con-res 0xFF":
                     print(data.decode())
                     print("Did not receive any packages for 4 seconds, shutting down...")
@@ -86,13 +75,16 @@ def handle_client_message():
                     automated_message = "res-{} = {}".format(res_counter, "I am server").encode()
                     sent = sock.sendto(automated_message, client_address)
                     print("sent {} bytes back to {}".format(sent, client_address))
-                elif data.decode().split("-")[0] != "con":
+                elif data.decode().split("-")[0] != "con" and data.decode().split("-")[0] != "com":
                     sock.sendto("Error in message".encode(), client_address)
         except KeyboardInterrupt:
             sys.exit()
         except socket.timeout:
-            handle_client_message.is_timed_out = True
-            continue
+            print("Sent terminating message")
+            sock.sendto(TERMINATE_CLIENT_PACKET.encode(), client_address)
+            data = sock.recv(MAX_MESSAGE_SIZE).decode("utf-8")
+            print(data)
+            break
 
     print("Closing socket...")
     sock.close()

@@ -68,6 +68,7 @@ def send_message():
             # we sleep shortly to let response be printed before we get input again
             time.sleep(0.1)
         except (KeyboardInterrupt, OSError):
+            sys.stdout.flush()
             sys.exit()
 
 
@@ -81,14 +82,12 @@ def receive_response():
             print("Idle for 4 seconds, shutting down...")
             os._exit(1)
 
-        # check for if we didnt get the expected message type(response)
-
         if data.decode().split("-")[0] == "res":
             print(data.decode())
         else:
             print(data.decode())
-            # sock.close()
-            # sys.exit()
+            sock.close()
+            sys.exit()
 
 
 if __name__ == "__main__":
