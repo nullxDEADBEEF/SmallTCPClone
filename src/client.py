@@ -22,6 +22,7 @@ MAX_MESSAGE_SIZE = 4096
 HEARTBEAT_TIMER = 3.0
 
 ip = socket.gethostbyname(socket.gethostname())
+msg_counter = 0
 
 
 # sends heartbeat to server if flag is set
@@ -55,26 +56,33 @@ def do_handshake():
 
 
 def send_message():
-    msg_counter = 0
     while True:
         try:
-            # encode message into bytes
-            message = input("> ")
-            message = "msg-{} = {}".format(msg_counter, message)
-            # send data
-            print(message)
-            sock.sendto(message.encode(), server_address)
-            msg_counter += 2
-            # we sleep shortly to let response be printed before we get input again
-            time.sleep(0.1)
+            if config_parser.getboolean("DEFAULT_SETTINGS", "AutomateSending"):
+                message = "Automated message"
+                message = "msg-{} = {}".format(msg_counter, message)
+                print(message)
+                sock.sendto(message.encode(), server_address)
+                time.sleep(0.1)
+            else:
+                # encode message into bytes
+                message = input("> ")
+                message = "msg-{} = {}".format(msg_counter, message)
+                # send data
+                print(message)
+                sock.sendto(message.encode(), server_address)
+                # we sleep shortly to let response be printed before we get input again
+                time.sleep(0.1)
         except (KeyboardInterrupt, OSError):
-            sys.stdout.flush()
             sys.exit()
 
 
 def receive_response():
+    global msg_counter
     while True:
         data, server = sock.recvfrom(MAX_MESSAGE_SIZE)
+        msg_counter = int(data.decode().split("-")[1].split()[0])
+        msg_counter += 1
         # we received termination package, time to shutdown
         if data.decode() == "con-res 0xFE":
             sock.sendto("con-res 0xFF".encode(), server)
