@@ -35,16 +35,17 @@ def handle_handshake():
         # get the counter after we split the message with format "com-<com_counter>"
         # first split -> [com, 0 <ip address>] => second split => [0, <ip address>]
         # we then do index 0 to get counter
-        message_type = client_message.decode().split("-")[0]
+        message_type = client_message.decode().split(" ")[0]
         message = client_message.decode().split(" ")[1]
         # check if we get a "com" message and that we got a valid IP-address
-        if message_type == "com" and socket.inet_aton(message):
+        if message_type == "com-0" and socket.inet_aton(message):
             sock.sendto(("com-{} accept ".format(com_counter) + server_address[0]).encode(), client_address)
             log_message("com-{} accept ".format(com_counter) + server_address[0])
         else:
-            sock.sendto("Error in handshake\nExpected: com\nGot: {}".format(message_type).encode(), client_address)
-            log_message("Error in handshake\nExpected: com\nGot: {}".format(message_type))
-            handle_handshake()
+            sock.sendto("Error in handshake\nExpected: com-0\nGot: {}".format(message_type).encode(), client_address)
+            log_message("Error in handshake\nExpected: com-0\nGot: {}".format(message_type))
+            print("Error in handshake\nExpected: com-0\nGot: {}\nShutting down...".format(message_type))
+            sys.exit()
         data, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
         data_list = data.split()
         if data_list[ACCEPT_STRING_INDEX].decode() == "accept":
