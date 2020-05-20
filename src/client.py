@@ -81,8 +81,6 @@ def receive_response():
     global msg_counter
     while True:
         data, server = sock.recvfrom(MAX_MESSAGE_SIZE)
-        msg_counter = int(data.decode().split("-")[1].split()[0])
-        msg_counter += 1
         # we received termination package, time to shutdown
         if data.decode() == "con-res 0xFE":
             sock.sendto("con-res 0xFF".encode(), server)
@@ -90,15 +88,26 @@ def receive_response():
             print("Idle for 4 seconds, shutting down...")
             os._exit(1)
 
-        if data.decode().split("-")[0] == "res":
+        elif data.decode().split("-")[0] == "res":
+            msg_counter = int(data.decode().split("-")[1].split()[0])
+            msg_counter += 1
             print(data.decode())
         else:
             print(data.decode())
             sock.close()
-            sys.exit()
+            os._exit(1)
+
+
+def try_to_bypass_handshake():
+    sock.sendto("com-0 try_to_bypass".encode(), server_address)
+
+
+def message_without_protocol_standard():
+    sock.sendto("This msg doesnt follow protocol".encode(), server_address)
 
 
 if __name__ == "__main__":
+    # try_to_bypass_handshake()
     do_handshake()
     heartbeat_thread = threading.Thread(target = send_heartbeat)
     heartbeat_thread.setDaemon(True)
@@ -106,4 +115,5 @@ if __name__ == "__main__":
     receive_thread = threading.Thread(target = receive_response)
     receive_thread.setDaemon(True)
     receive_thread.start()
+    # message_without_protocol_standard()
     send_message()

@@ -60,6 +60,8 @@ def handle_handshake():
         sys.exit()
     except OSError as ex:
         print(ex)
+        log_message("Error in handshake")
+        sock.sendto("Error in handshake".encode(), client_address)
         sys.exit()
 
 
@@ -90,6 +92,7 @@ def handle_client_message():
                     print("sent {} bytes back to {}".format(sent, client_address))
                 elif data.decode().split("-")[0] != "con" and data.decode().split("-")[0] != "com":
                     sock.sendto("Error in message".encode(), client_address)
+                    sys.exit()
 
         except KeyboardInterrupt:
             sys.exit()
@@ -102,7 +105,7 @@ def handle_client_message():
                 print("Did not receive any packages for 4 seconds, shutting down...")
             break
         # we sleep the thread 1 sec divided by specified max packets
-        # to avoid hitting our max packets per second
+        # to avoid hitting over max packets per second
         time.sleep(1 / max_packets)
 
     print("Closing socket...")
