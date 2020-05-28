@@ -24,6 +24,7 @@ ACCEPT_STRING_INDEX = 1
 MAX_MESSAGE_SIZE = 4096
 CONNECTION_TOLERANCE = 4.0
 TERMINATE_CLIENT_PACKET = "con-res 0xFE"
+res_counter = 0
 
 
 # handle connection request from client
@@ -48,14 +49,15 @@ def handle_handshake():
             sys.exit()
         data, client_address = sock.recvfrom(MAX_MESSAGE_SIZE)
         data_list = data.split()
-        if data_list[ACCEPT_STRING_INDEX].decode() == "accept":
+
+        if data_list[0].decode().startswith("com-") and data_list[ACCEPT_STRING_INDEX].decode() == "accept":
             log_message(data_list[ACCEPT_STRING_INDEX].decode())
             print("Client accepted connection request")
             return client_address
         else:
             log_message(data_list[ACCEPT_STRING_INDEX].decode())
             print("Client didnt accept connection request")
-            handle_handshake()
+            sys.exit()
     except KeyboardInterrupt:
         sys.exit()
     except OSError as ex:
@@ -66,6 +68,7 @@ def handle_handshake():
 
 
 def handle_client_message():
+    global res_counter
     client_address = handle_handshake()
     running = True
     while running:
@@ -81,12 +84,15 @@ def handle_client_message():
 
             print("received {} bytes from {}".format(len(data), client_address))
 
-            if data:
-                message_type = data.decode().split("-")[0]
+            if data and data.decode() != "con-h 0x00":
+                message_type = data.decode()
+
+                client_counter = int(data.decode().split("-")[1].split()[0])
                 # send a response if we got a message type of "msg"
-                if message_type == "msg":
-                    res_counter = int(data.decode().split("-")[1].split()[0])
-                    res_counter += 1
+                if message_type.startswith("msg-") and res_counter == client_counter - 1 or\
+                        client_counter == 0 and message_type.startswith("msg-"):
+                    res_counter = client_counter + 1
+                    # res_counter += 1
                     automated_message = "res-{} = {}".format(res_counter, "I am server").encode()
                     sent = sock.sendto(automated_message, client_address)
                     print("sent {} bytes back to {}".format(sent, client_address))

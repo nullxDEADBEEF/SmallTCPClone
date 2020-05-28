@@ -88,7 +88,7 @@ def receive_response():
             print("Idle for 4 seconds, shutting down...")
             os._exit(1)
 
-        elif data.decode().split("-")[0] == "res":
+        elif data.decode().startswith("res-"):
             msg_counter = int(data.decode().split("-")[1].split()[0])
             msg_counter += 1
             print(data.decode())
